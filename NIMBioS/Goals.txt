@@ -1,0 +1,5 @@
+Everyone get through chapter 4 in Keeling
+
+Play with epiModel
+
+Try to model a two host system
