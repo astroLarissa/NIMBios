@@ -1,0 +1,120 @@
+---
+title: "Two Host Sinusoidal Birth and Death"
+authors: DN, AS, TW, LW
+output: html_notebook
+---
+
+#SIR Model for a Two Host System with Sinusoidal Birth and Death Forcing
+
+
+```{r}
+library(deSolve)
+library(EpiModel)                        
+
+                                       #two-host, birth and death pulse subfunction
+SIRTwo <- function(t, t0, parms) {    #ind. var, current state var, parameters
+  with(as.list(c(t0, parms)), {       #list for params
+    
+#Host 1    
+    dS <- - bet*s.num*i.num                                  #beta_1 
+          - bet.g21*s.num*i2.num                             #beta_21
+          - omega0*(1 + seas.amp.omega*sin(2*pi*t+phi))*s.num  #sine death rate for S 
+          + alp0*(1+seas.amp*sin(2*pi*t))*(s.num+i.num+r.num) #sine birthrate
+    
+    dI <-   bet*s.num*i.num
+          + bet.g21*s.num*i2.num 
+          - gam*i.num                                        #gamma_1
+          - omega0*(1 + seas.amp.omega*sin(2*pi*t+phi))*i.num      #sine death rate for I
+          - omeg_star *i.num                                 #death from infection
+    
+    dR <-   gam*i.num 
+          - omega0*(1 + seas.amp.omega*sin(2*pi*t+phi))* r.num     #sine death rate for R
+#Host 2    
+  dS2 <-  - bet.g2*s2.num*i2.num  
+          - bet.g12*s2.num*i.num  
+          - omeg.g2 *s2.num                              #constant deathrate
+          + alp.g2 *(s2.num+i2.num+r.num)                #constant birthrate
+
+  dI2 <-    bet.g2*s2.num*i2.num
+          + bet.g12*s2.num*i.num 
+          - gam.g2*i2.num 
+          - omeg.g2*i2.num 
+          - omeg_star.g2 *i2.num                         #death from infection, host 2
+  
+  dR2 <-    gam.g2*i2.num  
+          - omeg.g2 * r2.num
+  
+
+   # list(c(dS, dI, dR, dS2, dI2, dR2)) # I think this gets thrown away?
+    list(c(dS, dI, dR, dS2, dI2, dR2),            #outputs as list
+           N1 = s.num + i.num + r.num,            #population size, host 1
+           N2 = s2.num + i2.num + r2.num,         #population size, host 2
+           prop.s1 = s.num/s.num+i.num+r.num,     #porportion infected, host 1
+           prop.s2 = s2.num/s.num+i.num+r.num,    #proportion infects, host 2
+             )                                                        
+                                              })        #dSIR(2) def list, state/parms list
+                                                  }     #SIRTwo func
+
+#beta transmission coefficients, gamma recovery, alpha birth, omega death
+#at equilibrium in the absence of pathogen
+
+get_model_results <- function(dem_scale_factor = 0.6,       #function with defaults
+                              bet = 3.5e-6, bet.g2 = 3.5e-6,
+                              bet.g21 = 1e-7, bet.g12 = 1e-7, 
+                              gam = 1e-6, gam.g2 = 1e-6,
+                              omega0 = dem_scale_factor, phi = pi/2, 
+                              seas.amp.omega = 1,
+                              omeg.g2 = dem_scale_factor, 
+                              omeg_star = 0,          #default to no death from infection
+                              omeg_star.g2 = 0,
+                              alp0 = dem_scale_factor, seas.amp = 1,
+                              alp.g2 = dem_scale_factor)
+                              { 
+  param <- param.dcm(bet = bet, bet.g2 = bet.g2, 
+                   bet.g21 = bet.g21, bet.g12 = bet.g12, 
+                   gam = gam, gam.g2 = gam.g2,
+                   omega0 = omega0, phi = phi, 
+                   seas.amp.omega = seas.amp.omega,
+                   omeg.g2 = omeg.g2, 
+                   omeg_star = omeg_star, 
+                   omeg_star.g2 = omeg_star.g2,
+                   alp0 = alp0, seas.amp = seas.amp,
+                   alp.g2 = alp.g2)
+  init <- init.dcm(s.num = 1e6, i.num = 1, r.num = 0,
+                  s2.num = 1e6, i2.num = 1, r2.num =0)
+  control <- control.dcm(nsteps = 365, dt = 1, new.mod = SIRTwo)
+
+  mod <- dcm(param, init, control)
+                                
+  mod
+                              }
+
+```
+
+
+
+```{r}
+first_results <- as.data.frame(get_model_results())               #store results
+
+max.new.inf.g1 <- max(first_results$i.num)
+max.new.inf.g1 <- max(first_results$i2.num)
+
+
+
+
+second_results <- get_model_results(dem_scale_factor = 0.2)
+
+mod_results_list <- list()
+
+for(i in (seq(from=0, to=1, by=0.1))) {
+  current_model <- get_model_results(dem_scale_factor = i)
+  attr(current_model, "dem_scale_factor") <- i
+                                      }
+
+```
+
+
+```{r}
+View(mtcars)
+```
+
