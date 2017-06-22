@@ -1,0 +1,173 @@
+---
+title: "Two Host Sinusoidal Birth and Death"
+authors: LW, TW, DN
+output: html_notebook
+---
+
+##SIR Model for a Two Host System with Sinusoidal Birth and Death Forcing
+
+#Test Multiple parameters with get_model_results()
+
+
+```{r}
+library(deSolve)
+library(EpiModel)
+library(ggplot2)                       #not needed until later code chunks
+
+                                      #two-host, birth and death pulse subfunction
+SIRTwo <- function(t, t0, parms) {    #ind. var, current state var, parameters
+  with(as.list(c(t0, parms)), {       #list for params
+    
+#Host 1    
+    dS <- - bet*s.num*i.num                                             #beta_1 
+          - bet.g21*s.num*i2.num                                        #beta_21
+          - omega0*(1 + seas.amp.omega*sin(2*pi*t+phi.omega))*s.num     #deathrate w/ seasonal shift
+          + alp0*(1+seas.amp*sin(2*pi*t+phi.alpha))*(s.num+i.num+r.num) #birthrate w/ seasonal shift
+    
+    dI <-   bet*s.num*i.num
+          + bet.g21*s.num*i2.num 
+          - gam*i.num                                                 #gamma_1
+          - omega0*(1 + seas.amp.omega*sin(2*pi*t+phi.omega))*i.num   #deathrate w/ seasonal shift
+          - omeg_star *i.num                                          #death from infection
+    
+    dR <-   gam*i.num 
+          - omega0*(1 + seas.amp.omega*sin(2*pi*t+phi.omega))* r.num     #deathrate w/ seasonal shift
+#Host 2    
+  dS2 <-  - bet.g2*s2.num*i2.num  
+          - bet.g12*s2.num*i.num  
+          - omeg.g2 *s2.num                              #constant deathrate
+          + alp.g2 *(s2.num+i2.num+r.num)                #constant birthrate
+
+  dI2 <-    bet.g2*s2.num*i2.num
+          + bet.g12*s2.num*i.num 
+          - gam.g2*i2.num 
+          - omeg.g2*i2.num 
+          - omeg_star.g2 *i2.num                         #death from infection, host 2
+  
+  dR2 <-    gam.g2*i2.num  
+          - omeg.g2 * r2.num
+  
+
+   # list(c(dS, dI, dR, dS2, dI2, dR2)) # I think this gets thrown away?
+    list(c(dS, dI, dR, dS2, dI2, dR2),            #outputs as list
+           N1 = s.num + i.num + r.num,            #population size, host 1
+           N2 = s2.num + i2.num + r2.num,         #population size, host 2
+           prop.s1 = s.num/(s.num+i.num+r.num),     #porportion infected, host 1
+           prop.s2 = s2.num/(s.num+i.num+r.num)    #proportion infects, host 2
+             )                                                        
+                                              })        #dSIR(2) def list, state/parms list
+                                                  }     #SIRTwo func
+
+#beta transmission coefficients, gamma recovery, alpha birth, omega death, omega star death from infection
+#at equilibrium in the absence of pathogen
+
+get_model_results <- function(dem_scale_factor = 0.6,            #function with defaults declared 
+                              bet = 3.5e-6, bet.g2 = 3.5e-6,
+                              bet.g21 = 1e-7, bet.g12 = 1e-7, 
+                              gam = 1e-6, gam.g2 = 1e-6,
+                              omega0 = dem_scale_factor, phi.omega = -pi/2, 
+                              seas.amp.omega = 1,
+                              omeg.g2 = dem_scale_factor, 
+                              omeg_star = 0,                     #default to no death from infection
+                              omeg_star.g2 = 0,
+                              alp0 = dem_scale_factor, seas.amp = 1,
+                              alp.g2 = dem_scale_factor,
+                              phi.alpha = 0,
+                              s.num = 1e6, i.num = 1, r.num = 0,
+                              s2.num = 1e6, i2.num = 1, r2.num =0,
+                              nsteps = 10, dt = .02
+                              )
+                              { 
+  param <- param.dcm(dem_scale_factor = dem_scale_factor,
+                   bet = bet, bet.g2 = bet.g2,                 #parameters
+                   bet.g21 = bet.g21, bet.g12 = bet.g12,         #the way this works is calling func
+                   gam = gam, gam.g2 = gam.g2,                   #get_model_results() w/o any arguments
+                   omega0 = omega0, phi.omega = phi.omega,       #causes execution w/ defaults set above
+                   seas.amp.omega = seas.amp.omega,              #(defaults can be reset BUT)
+                   omeg.g2 = omeg.g2,                            #what this enables us to do is keep all
+                   omeg_star = omeg_star,                        #params at a default while we use a loop
+                   omeg_star.g2 = omeg_star.g2,                  #(see below) to run through all values  
+                   alp0 = alp0, seas.amp = seas.amp,             #of the param we're investigating
+                   phi.alpha = phi.alpha,
+                   alp.g2 = alp.g2)                              
+  init <- init.dcm(s.num = s.num, i.num = i.num, r.num = r.num,
+                  s2.num = s2.num, i2.num = i2.num, r2.num = r2.num)
+  control <- control.dcm(nsteps = nsteps, dt = dt, new.mod = SIRTwo)
+
+  mod <- dcm(param, init, control)
+                                
+  mod
+                              }
+
+```
+
+#Basic Storing in Dataframe Structure
+
+```{r}
+first_results_list <- get_model_results()       #output defaults to list data structure, maybe use
+                                                #can attribute like crazy..plotting, analysis needs 
+                                                #and methods will determine which way better
+
+str(first_results_list)                         #list of 3 lists: param, control, epi (defined line 52)
+
+first_results_df <- as.data.frame(get_model_results())   #store results as dataframe>>for use w/ ggplot2
+
+#save csv to wd:::only good for dataframes? will lose list attributes when reading back into R
+#if not sharing output to other platforms (manipulation with C, MatLab) no need
+#write.csv(first_results_df,"first_results.csv", row.names=F,na="NA",append=T, quote= FALSE, sep=",", col.names=T)
+
+#test save function by wiping first_results_list off global enviornment
+
+ save(first_results_list, file="first_results_list.RData")   #Saving mult objects in binary RData format 
+
+# Or, using ASCII format
+#save(data_name, file="data_name.RData", ascii=TRUE)
+
+# Can save multiple objects
+#save(data_name, data1_name, file="data_file.RData")
+
+# To load the data again:
+load("first_results_list.RData")
+
+
+
+```
+
+##Testing Multiple values for (a) Parameter(s) Simultaneously
+
+```{r}
+
+for(i in (seq(from=0, to=1, by=0.1))) {       
+  scale_factor_results <- get_model_results(dem_scale_factor = i)
+  attr(current_model, "dem_scale_factor") <- i
+}
+
+str(scale_factor_results)            #list of 3: param, control, epi (defined line 52)
+                                    
+scale_factor_results$param
+
+str(scale_factor_results$epi)        #list of 10
+
+str(scale_factor_results$epi$s.num)  #dataframe
+
+foo <- scale_factor_results$epi$s.num$run2
+
+dem_scale_factor = seq(0,1,.05);          #atomic vector for scale values
+
+alp0 = dem_scale_factor;
+
+#for-loop to generate data for all combinations of parameters tested
+#this can be scaled down (or up) so that fewer or more parameters tested
+
+for(i in alp0)   
+  for(j in omega)
+  
+```
+
+##Plotting with ggplot2
+
+```{r}
+ggplot(data = first_results, aes(x = time, y = i2.num)) + geom_line()
+
+```
+
